@@ -1393,6 +1393,16 @@ impl ServerApiProvider {
         self.server_api.clone()
     }
 
+    /// Returns a local AI client if configured, otherwise returns the default server client.
+    /// This checks for custom base_url configuration and returns a LocalAIClient if available.
+    pub fn get_ai_client_local(&self, ctx: &AppContext) -> Arc<dyn AIClient> {
+        if let Some(local_client) = local_ai_client::LocalAIClient::from_context(ctx) {
+            Arc::new(local_client)
+        } else {
+            self.server_api.clone()
+        }
+    }
+
     pub fn get_cloud_objects_client(&self) -> Arc<dyn ObjectClient> {
         self.server_api.clone()
     }

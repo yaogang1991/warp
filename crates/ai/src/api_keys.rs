@@ -12,6 +12,14 @@ pub enum ApiKeyManagerEvent {
     KeysUpdated,
 }
 
+/// AI provider type for local/custom endpoint configuration.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LocalAIProviderType {
+    OpenAI,
+    Anthropic,
+}
+
 /// User-provided API keys for AI providers.
 ///
 /// These are used for "Bring Your Own API Key" functionality, allowing
@@ -22,6 +30,10 @@ pub struct ApiKeys {
     pub anthropic: Option<String>,
     pub openai: Option<String>,
     pub open_router: Option<String>,
+    /// Custom base URL for local AI service (e.g., GLM Coding Plan)
+    pub base_url: Option<String>,
+    /// Provider type for custom base URL (openai or anthropic compatible)
+    pub local_provider_type: Option<LocalAIProviderType>,
 }
 
 impl ApiKeys {
@@ -30,6 +42,15 @@ impl ApiKeys {
             || self.anthropic.is_some()
             || self.google.is_some()
             || self.open_router.is_some()
+            || self.base_url.is_some()
+    }
+
+    /// Check if local AI service is configured (custom base URL + API key)
+    pub fn has_local_ai_config(&self) -> bool {
+        self.base_url.is_some()
+            && (self.openai.is_some()
+                || self.anthropic.is_some()
+                || self.open_router.is_some())
     }
 }
 
@@ -91,6 +112,34 @@ impl ApiKeyManager {
         self.keys.open_router = key;
         ctx.emit(ApiKeyManagerEvent::KeysUpdated);
         self.write_keys_to_secure_storage(ctx);
+    }
+
+    pub fn set_base_url(&mut self, base_url: Option<String>, ctx: &mut ModelContext<Self>) {
+        self.keys.base_url = base_url;
+        ctx.emit(ApiKeyManagerEvent::KeysUpdated);
+        self.write_keys_to_secure_storage(ctx);
+    }
+
+    pub fn set_local_provider_type(
+        &mut self,
+        provider_type: Option<LocalAIProviderType>,
+        ctx: &mut ModelContext<Self>,
+    ) {
+        self.keys.local_provider_type = provider_type;
+        ctx.emit(ApiKeyManagerEvent::KeysUpdated);
+        self.write_keys_to_secure_storage(ctx);
+    }
+
+    pub fn base_url(&self) -> Option<&String> {
+        self.keys.base_url.as_ref()
+    }
+
+    pub fn local_provider_type(&self) -> Option<&LocalAIProviderType> {
+        self.keys.local_provider_type.as_ref()
+    }
+
+    pub fn has_local_ai_config(&self) -> bool {
+        self.keys.has_local_ai_config()
     }
 
     pub fn set_aws_credentials_state(

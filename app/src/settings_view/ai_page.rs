@@ -2278,6 +2278,7 @@ pub enum AISettingsPageAction {
         pattern: String,
         agent: Option<CLIAgent>,
     },
+    SetLocalAIProvider(::ai::api_keys::LocalAIProviderType),
 }
 
 impl From<&AISettingsPageAction> for LoginGatedFeature {
@@ -2682,6 +2683,11 @@ impl TypedActionView for AISettingsPageView {
             AISettingsPageAction::SetCLIAgentForCommand { pattern, agent } => {
                 AISettings::handle(ctx).update(ctx, |settings, ctx| {
                     settings.set_cli_agent_for_command(pattern, *agent, ctx);
+                });
+            }
+            AISettingsPageAction::SetLocalAIProvider(provider_type) => {
+                ApiKeyManager::handle(ctx).update(ctx, |model, ctx| {
+                    model.set_local_provider_type(Some(*provider_type), ctx);
                 });
             }
             AISettingsPageAction::RemoveFromCommandExecutionAllowlist(cmd) => {
@@ -6307,6 +6313,9 @@ struct ApiKeysWidget {
     openai_api_key_editor: ViewHandle<EditorView>,
     anthropic_api_key_editor: ViewHandle<EditorView>,
     google_api_key_editor: ViewHandle<EditorView>,
+    // Local AI configuration
+    base_url_editor: ViewHandle<EditorView>,
+    provider_dropdown: ViewHandle<Dropdown<AISettingsPageAction>>,
 
     can_use_warp_credits_with_byok: SwitchStateHandle,
     upgrade_highlight_index: HighlightedHyperlink,
@@ -6411,10 +6420,94 @@ impl ApiKeysWidget {
             "AIzaSy..."
         );
 
+        // Create base URL editor for local AI configuration
+        let api_keys_for_config = ApiKeyManager::as_ref(ctx).keys().clone();
+        let base_url_value = api_keys_for_config.base_url.clone().unwrap_or_default();
+        let current_provider_type = api_keys_for_config.local_provider_type
+            .unwrap_or(ai::api_keys::LocalAIProviderType::OpenAI);
+
+        let base_url_editor = ctx.add_typed_action_view(move |ctx| {
+            let appearance = Appearance::handle(ctx).as_ref(ctx);
+            let options = SingleLineEditorOptions {
+                is_password: false,
+                text: TextOptions {
+                    font_size_override: Some(appearance.ui_font_size()),
+                    font_family_override: Some(appearance.monospace_font_family()),
+                    text_colors_override: Some(TextColors {
+                        default_color: appearance.theme().active_ui_text_color(),
+                        disabled_color: appearance.theme().disabled_ui_text_color(),
+                        hint_color: appearance.theme().disabled_ui_text_color(),
+                    }),
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
+            let mut editor = EditorView::single_line(options, ctx);
+            editor.set_placeholder_text("https://api.example.com", ctx);
+            if !base_url_value.is_empty() {
+                editor.set_buffer_text(&base_url_value, ctx);
+            }
+            editor
+        });
+
+        AISettingsPageView::update_editor_interaction_state(
+            base_url_editor.clone(),
+            is_any_ai_enabled && is_byo_enabled,
+            ctx,
+        );
+        ctx.subscribe_to_view(&base_url_editor, |_, editor, event, ctx| {
+            if matches!(event, EditorEvent::Blurred | EditorEvent::Enter) {
+                let buffer_text = editor.as_ref(ctx).buffer_text(ctx);
+                let base_url = buffer_text.is_empty().not().then_some(buffer_text);
+                ApiKeyManager::handle(ctx).update(ctx, |model, ctx| {
+                    model.set_base_url(base_url, ctx);
+                });
+            }
+        });
+
+        // Provider dropdown for local AI
+        let provider_dropdown = ctx.add_typed_action_view(Dropdown::<AISettingsPageAction>::new);
+        let provider_items = vec![
+            DropdownItem::new(
+                "OpenAI",
+                AISettingsPageAction::SetLocalAIProvider(ai::api_keys::LocalAIProviderType::OpenAI),
+            ),
+            DropdownItem::new(
+                "Anthropic",
+                AISettingsPageAction::SetLocalAIProvider(ai::api_keys::LocalAIProviderType::Anthropic),
+            ),
+        ];
+        let initial_is_enabled = is_any_ai_enabled && is_byo_enabled;
+        provider_dropdown.update(ctx, |dropdown, ctx| {
+            dropdown.set_items(provider_items, ctx);
+            dropdown.set_selected_by_action(
+                AISettingsPageAction::SetLocalAIProvider(current_provider_type),
+                ctx,
+            );
+            dropdown.set_disabled(!initial_is_enabled, ctx);
+        });
+
+        // Update dropdown enablement based on BYO state
+        let provider_dropdown_clone = provider_dropdown.clone();
+        ctx.subscribe_to_model(&workspace_handle, move |_, workspace, event, ctx| {
+            if let UserWorkspacesEvent::TeamsChanged = event {
+                let is_any_ai_enabled = AISettings::handle(ctx).as_ref(ctx).is_any_ai_enabled(ctx);
+                let is_byo_enabled = workspace.as_ref(ctx).is_byo_api_key_enabled();
+                let is_enabled = is_any_ai_enabled && is_byo_enabled;
+
+                provider_dropdown_clone.update(ctx, |dropdown, ctx| {
+                    dropdown.set_disabled(!is_enabled, ctx);
+                });
+                ctx.notify();
+            }
+        });
+
         Self {
             openai_api_key_editor,
             anthropic_api_key_editor,
             google_api_key_editor,
+            base_url_editor,
+            provider_dropdown,
 
             can_use_warp_credits_with_byok: Default::default(),
             upgrade_highlight_index: Default::default(),
@@ -6504,6 +6597,56 @@ impl ApiKeysWidget {
             is_enabled,
             app,
         ));
+
+        // Add a separator before local AI configuration
+        column.add_child(
+            Container::new(
+                Text::new_inline(
+                    "Local AI Configuration",
+                    appearance.ui_font_family(),
+                    CONTENT_FONT_SIZE,
+                )
+                .with_color(appearance.theme().surface_1().into())
+                .finish(),
+            )
+            .with_margin(Coords {
+                top: 16.,
+                bottom: 8.,
+                left: 0.,
+                right: 0.,
+            })
+            .finish(),
+        );
+
+        // Base URL input for local AI endpoint
+        column.add_child(render_api_key_input(
+            appearance,
+            "Custom Base URL (e.g., https://api.example.com)",
+            self.base_url_editor.clone(),
+            is_enabled,
+            app,
+        ));
+
+        // Provider type dropdown for local AI
+        let provider_label = Text::new_inline(
+            "Provider Protocol",
+            appearance.ui_font_family(),
+            CONTENT_FONT_SIZE,
+        )
+        .with_color(styles::header_font_color(is_enabled, app).into())
+        .finish();
+
+        column.add_child(
+            Flex::column()
+                .with_spacing(8.)
+                .with_child(provider_label)
+                .with_child(
+                    Container::new(ChildView::new(&self.provider_dropdown).finish())
+                        .with_disabled(!is_enabled)
+                        .finish(),
+                )
+                .finish(),
+        );
 
         // Show upgrade CTA if BYOK is not enabled
         if !is_byo_enabled {
