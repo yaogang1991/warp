@@ -37,7 +37,7 @@ use url::Url;
 use warp_core::context_flag::ContextFlag;
 use warp_core::errors::{register_error, AnyhowErrorExt, ErrorExt};
 use warp_managed_secrets::client::ManagedSecretsClient;
-use warpui::{r#async::BoxFuture, ModelContext};
+use warpui::{r#async::BoxFuture, AppContext, ModelContext};
 use workspace::WorkspaceClient;
 
 use crate::server::telemetry::TelemetryApi;
@@ -1396,7 +1396,7 @@ impl ServerApiProvider {
     /// Returns a local AI client if configured, otherwise returns the default server client.
     /// This checks for custom base_url configuration and returns a LocalAIClient if available.
     pub fn get_ai_client_local(&self, ctx: &AppContext) -> Arc<dyn AIClient> {
-        if let Some(local_client) = local_ai_client::LocalAIClient::from_context(ctx) {
+        if let Some(local_client) = crate::server::local_ai_client::LocalAIClient::from_context(ctx) {
             Arc::new(local_client)
         } else {
             self.server_api.clone()

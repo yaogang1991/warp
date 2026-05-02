@@ -1,16 +1,15 @@
 //! OpenAI-compatible API client implementation with streaming support.
 
 use super::{
-    ChatMessage, LocalAIConfig, LocalAIError, OpenAIChatRequest, OpenAIStreamChunk, ProviderClient,
+    ChatMessage, LocalAIConfig, LocalAIError, OpenAIChatRequest, OpenAIStreamChunk, ProviderClient, ProviderType,
 };
-use futures::{future, StreamExt};
+use futures::{future, Stream, StreamExt};
 use async_trait::async_trait;
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use reqwest::Client;
 use reqwest_eventsource::{Event, RequestBuilderExt};
 use serde::Deserialize;
 use std::pin::Pin;
-use std::time::Duration;
 
 /// OpenAI-compatible client.
 pub struct OpenAIClient {
@@ -118,7 +117,6 @@ impl OpenAIClient {
         // Create SSE stream
         let stream = request_builder
             .eventsource()
-            .await
             .map_err(|e| LocalAIError::StreamError(format!("Failed to create stream: {}", e)))?;
 
         Ok(Box::pin(stream.filter_map(move |event| {
@@ -185,7 +183,7 @@ impl ProviderClient for OpenAIClient {
         );
         headers.insert(
             AUTHORIZATION,
-            HeaderValue::format(&format_args!("Bearer {}", api_key))
+            HeaderValue::from_str(&format!("Bearer {}", api_key))
                 .expect("Invalid auth header"),
         );
         headers
@@ -207,7 +205,7 @@ mod tests {
         let config = LocalAIConfig {
             base_url: "https://api.example.com".to_string(),
             api_key: "test-key".to_string(),
-            provider_type: super::ProviderType::OpenAI,
+            provider_type: ProviderType::OpenAI,
             model: None,
             timeout_secs: 120,
             max_retries: 3,
@@ -224,7 +222,7 @@ mod tests {
         let config = LocalAIConfig {
             base_url: "https://api.example.com/".to_string(),
             api_key: "test-key".to_string(),
-            provider_type: super::ProviderType::OpenAI,
+            provider_type: ProviderType::OpenAI,
             model: None,
             timeout_secs: 120,
             max_retries: 3,
@@ -241,7 +239,7 @@ mod tests {
         let config = LocalAIConfig {
             base_url: "https://api.example.com/v1".to_string(),
             api_key: "test-key".to_string(),
-            provider_type: super::ProviderType::OpenAI,
+            provider_type: ProviderType::OpenAI,
             model: None,
             timeout_secs: 120,
             max_retries: 3,

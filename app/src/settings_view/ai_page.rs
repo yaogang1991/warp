@@ -6496,7 +6496,11 @@ impl ApiKeysWidget {
                 AISettingsPageAction::SetLocalAIProvider(current_provider_type),
                 ctx,
             );
-            dropdown.set_disabled(!initial_is_enabled, ctx);
+            if initial_is_enabled {
+                dropdown.set_enabled(ctx);
+            } else {
+                dropdown.set_disabled(ctx);
+            }
         });
 
         // Update dropdown enablement based on BYO state
@@ -6508,7 +6512,11 @@ impl ApiKeysWidget {
                 let is_enabled = is_any_ai_enabled && is_byo_enabled;
 
                 provider_dropdown_clone.update(ctx, |dropdown, ctx| {
-                    dropdown.set_disabled(!is_enabled, ctx);
+                    if is_enabled {
+                        dropdown.set_enabled(ctx);
+                    } else {
+                        dropdown.set_disabled(ctx);
+                    }
                 });
                 ctx.notify();
             }
@@ -6636,12 +6644,8 @@ impl ApiKeysWidget {
 
             column.add_child(
                 Container::new(usage_hint)
-                    .with_margin(Coords {
-                        top: -8.,
-                        bottom: 8.,
-                        left: 0.,
-                        right: 0.,
-                    })
+                    .with_margin_top(-8.)
+                    .with_margin_bottom(8.)
                     .finish(),
             );
         }
@@ -6657,12 +6661,8 @@ impl ApiKeysWidget {
                 .with_color(appearance.theme().surface_1().into())
                 .finish(),
             )
-            .with_margin(Coords {
-                top: 16.,
-                bottom: 8.,
-                left: 0.,
-                right: 0.,
-            })
+            .with_margin_top(16.)
+            .with_margin_bottom(8.)
             .finish(),
         );
 
@@ -6689,9 +6689,7 @@ impl ApiKeysWidget {
                 .with_spacing(8.)
                 .with_child(provider_label)
                 .with_child(
-                    Container::new(ChildView::new(&self.provider_dropdown).finish())
-                        .with_disabled(!is_enabled)
-                        .finish(),
+                    ChildView::new(&self.provider_dropdown).finish(),
                 )
                 .finish(),
         );

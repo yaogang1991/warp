@@ -7,13 +7,11 @@
 pub mod openai;
 pub mod anthropic;
 
-use crate::ai::ai_assistant::requests::GenerateDialogueResult;
-use crate::ai::ai_assistant::utils::TranscriptPart;
-use crate::server::AIApiError;
+use crate::server::server_api::AIApiError;
 use anyhow::anyhow;
 use async_trait::async_trait;
-use futures::{Stream, StreamExt};
-use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
+use futures::StreamExt;
+use reqwest::header::HeaderMap;
 use serde::{Deserialize, Serialize};
 use std::pin::Pin;
 use std::time::Duration;
@@ -131,21 +129,18 @@ pub struct ChatMessage {
 }
 
 impl ChatMessage {
-    fn user(content: String) -> Self {
+    pub fn user(content: String) -> Self {
         Self {
             role: "user".to_string(),
             content,
         }
     }
 
-    fn from_transcript_part(part: &TranscriptPart) -> Vec<Self> {
-        let mut messages = Vec::new();
-        // Convert transcript parts to chat messages
-        // This is a simplified conversion - actual implementation needs more nuance
-        if !part.prompt.is_empty() {
-            messages.push(ChatMessage::user(part.prompt.clone()));
+    pub fn assistant(content: String) -> Self {
+        Self {
+            role: "assistant".to_string(),
+            content,
         }
-        messages
     }
 }
 
@@ -282,7 +277,7 @@ pub enum LocalAIError {
 
 impl From<LocalAIError> for AIApiError {
     fn from(err: LocalAIError) -> Self {
-        AIApiError::Transport(anyhow!("{:?}", err))
+        AIApiError::Other(anyhow!("{:?}", err))
     }
 }
 
@@ -327,4 +322,52 @@ pub fn get_provider_client(provider_type: ProviderType) -> std::sync::Arc<dyn Pr
         ProviderType::OpenAI => std::sync::Arc::new(openai::OpenAIClient::new()),
         ProviderType::Anthropic => std::sync::Arc::new(anthropic::AnthropicClient::new()),
     }
+}
+
+/// Send a chat request with retry logic for transient errors.
+pub async fn send_chat_with_retry(
+    client: &dyn ProviderClient,
+    config: &LocalAIConfig,
+    messages: Vec<ChatMessage>,
+) -> Result<String, LocalAIError> {
+    let max_attempts = config.max_retries + 1;
+
+    for attempt in 0..max_attempts {
+        match client.send_chat_request(config, messages.clone()).await {
+            Ok(result) => return Ok(result),
+            Err(e) => {
+                let is_retryable = match &e {
+                    LocalAIError::RequestFailed(re) => {
+                        if re.is_timeout() {
+                            true
+                        } else if let Some(status) = re.status() {
+                            client.is_retryable_error(status.as_u16(), "request failed")
+                        } else {
+                            false
+                        }
+                    }
+                    LocalAIError::ApiError(msg) => {
+                        msg.contains("429") || msg.contains("rate limit") || msg.contains("timeout")
+                    }
+                    _ => false,
+                };
+
+                if !is_retryable || attempt >= max_attempts - 1 {
+                    return Err(e);
+                }
+
+                let backoff_ms = 1000 * (1 << attempt.min(5));
+                log::debug!(
+                    "Local AI request failed (attempt {}/{}), retrying after {}ms: {:?}",
+                    attempt + 1,
+                    max_attempts,
+                    backoff_ms,
+                    e
+                );
+                warpui::r#async::Timer::after(Duration::from_millis(backoff_ms)).await;
+            }
+        }
+    }
+
+    unreachable!()
 }

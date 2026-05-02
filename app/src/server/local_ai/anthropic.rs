@@ -2,16 +2,15 @@
 
 use super::{
     AnthropicMessageRequest, AnthropicStreamChunk, ChatMessage, LocalAIConfig, LocalAIError,
-    ProviderClient,
+    ProviderClient, ProviderType,
 };
-use futures::{future, StreamExt};
+use futures::{future, Stream, StreamExt};
 use async_trait::async_trait;
 use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
 use reqwest::Client;
 use reqwest_eventsource::{Event, RequestBuilderExt};
 use serde::Deserialize;
 use std::pin::Pin;
-use std::time::Duration;
 
 /// Anthropic-compatible client.
 pub struct AnthropicClient {
@@ -33,21 +32,9 @@ impl AnthropicClient {
         let endpoint = config.chat_endpoint();
         let model = config.default_model();
 
-        // Anthropic expects a specific message format with role "user"
-        // For simplicity, we'll convert all messages to user messages
-        let anthropic_messages: Vec<serde_json::Value> = messages
-            .into_iter()
-            .map(|msg| {
-                serde_json::json!({
-                    "role": "user",
-                    "content": msg.content
-                })
-            })
-            .collect();
-
         let request = AnthropicMessageRequest {
             model: model.to_string(),
-            messages: anthropic_messages,
+            messages,
             max_tokens: 4096,
             stream: false,
         };
@@ -127,20 +114,9 @@ impl AnthropicClient {
         let headers = self.build_headers(&api_key);
         let timeout = config.timeout();
 
-        // Anthropic expects a specific message format
-        let anthropic_messages: Vec<serde_json::Value> = messages
-            .into_iter()
-            .map(|msg| {
-                serde_json::json!({
-                    "role": "user",
-                    "content": msg.content
-                })
-            })
-            .collect();
-
         let request = AnthropicMessageRequest {
             model: model.to_string(),
-            messages: anthropic_messages,
+            messages,
             max_tokens: 4096,
             stream: true,
         };
@@ -157,7 +133,6 @@ impl AnthropicClient {
         // Create SSE stream
         let stream = request_builder
             .eventsource()
-            .await
             .map_err(|e| LocalAIError::StreamError(format!("Failed to create stream: {}", e)))?;
 
         Ok(Box::pin(stream.filter_map(move |event| {
@@ -258,7 +233,7 @@ mod tests {
         let config = LocalAIConfig {
             base_url: "https://api.example.com".to_string(),
             api_key: "test-key".to_string(),
-            provider_type: super::ProviderType::Anthropic,
+            provider_type: ProviderType::Anthropic,
             model: None,
             timeout_secs: 120,
             max_retries: 3,
@@ -275,7 +250,7 @@ mod tests {
         let config = LocalAIConfig {
             base_url: "https://api.example.com/v1".to_string(),
             api_key: "test-key".to_string(),
-            provider_type: super::ProviderType::Anthropic,
+            provider_type: ProviderType::Anthropic,
             model: None,
             timeout_secs: 120,
             max_retries: 3,
