@@ -6313,6 +6313,7 @@ struct ApiKeysWidget {
     openai_api_key_editor: ViewHandle<EditorView>,
     anthropic_api_key_editor: ViewHandle<EditorView>,
     google_api_key_editor: ViewHandle<EditorView>,
+    zai_api_key_editor: ViewHandle<EditorView>,
     // Local AI configuration
     base_url_editor: ViewHandle<EditorView>,
     provider_dropdown: ViewHandle<Dropdown<AISettingsPageAction>>,
@@ -6332,6 +6333,7 @@ impl ApiKeysWidget {
             openai: openai_key,
             anthropic: anthropic_key,
             google: google_key,
+            zai: zai_key,
             ..
         } = ApiKeyManager::as_ref(ctx).keys().clone();
 
@@ -6419,6 +6421,12 @@ impl ApiKeysWidget {
             set_google_key,
             "AIzaSy..."
         );
+        create_api_key_editor!(
+            zai_api_key_editor,
+            zai_key,
+            set_zai_key,
+            "Zhipu AI API Key..."
+        );
 
         // Create base URL editor for local AI configuration
         let api_keys_for_config = ApiKeyManager::as_ref(ctx).keys().clone();
@@ -6476,6 +6484,10 @@ impl ApiKeysWidget {
                 "Anthropic",
                 AISettingsPageAction::SetLocalAIProvider(ai::api_keys::LocalAIProviderType::Anthropic),
             ),
+            DropdownItem::new(
+                "Z.ai (GLM)",
+                AISettingsPageAction::SetLocalAIProvider(ai::api_keys::LocalAIProviderType::Zai),
+            ),
         ];
         let initial_is_enabled = is_any_ai_enabled && is_byo_enabled;
         provider_dropdown.update(ctx, |dropdown, ctx| {
@@ -6506,6 +6518,7 @@ impl ApiKeysWidget {
             openai_api_key_editor,
             anthropic_api_key_editor,
             google_api_key_editor,
+            zai_api_key_editor,
             base_url_editor,
             provider_dropdown,
 
@@ -6597,6 +6610,41 @@ impl ApiKeysWidget {
             is_enabled,
             app,
         ));
+        column.add_child(render_api_key_input(
+            appearance,
+            "Z.ai API Key",
+            self.zai_api_key_editor.clone(),
+            is_enabled,
+            app,
+        ));
+
+        // Show Z.ai usage hint when a key is configured.
+        // NOTE: The slash command name below must stay in sync with the
+        //       glm-plan-usage:usage-query skill registered in skills config.
+        let api_keys = ai::api_keys::ApiKeyManager::as_ref(app).keys();
+        if api_keys.zai.is_some() {
+            let usage_hint = Text::new_inline(
+                "Z.ai usage: Use /glm-plan-usage:usage-query to check your GLM Coding Plan quota.",
+                appearance.ui_font_family(),
+                appearance.ui_font_size(),
+            )
+            .with_color(blended_colors::text_sub(
+                appearance.theme(),
+                appearance.theme().surface_1(),
+            ))
+            .finish();
+
+            column.add_child(
+                Container::new(usage_hint)
+                    .with_margin(Coords {
+                        top: -8.,
+                        bottom: 8.,
+                        left: 0.,
+                        right: 0.,
+                    })
+                    .finish(),
+            );
+        }
 
         // Add a separator before local AI configuration
         column.add_child(

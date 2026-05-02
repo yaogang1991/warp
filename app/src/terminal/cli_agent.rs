@@ -112,12 +112,21 @@ const GOOSE_COLOR: ColorU = ColorU {
     a: 255,
 };
 
-/// Represents a CLI agent (e.g., Claude Code, Gemini CLI, Codex, Amp, Droid, OpenCode, Copilot, Pi, Auggie, Cursor, Goose)
+/// Z.ai brand color (智谱蓝 #0066CC)
+pub(crate) const ZAI_COLOR: ColorU = ColorU {
+    r: 0,
+    g: 102,
+    b: 204,
+    a: 255,
+};
+
+/// Represents a CLI agent (e.g., Claude Code, Gemini CLI, Codex, Amp, Droid, OpenCode, Copilot, Pi, Auggie, Cursor, Goose, Z.ai)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Sequence, Serialize, Deserialize)]
 pub enum CLIAgent {
     Claude,
     Gemini,
     Codex,
+    Zai,
     Amp,
     Droid,
     OpenCode,
@@ -137,6 +146,7 @@ impl CLIAgent {
             CLIAgent::Claude => "claude",
             CLIAgent::Gemini => "gemini",
             CLIAgent::Codex => "codex",
+            CLIAgent::Zai => "zai",
             CLIAgent::Amp => "amp",
             CLIAgent::Droid => "droid",
             CLIAgent::OpenCode => "opencode",
@@ -182,6 +192,7 @@ impl CLIAgent {
             CLIAgent::Claude => "Claude Code",
             CLIAgent::Gemini => "Gemini",
             CLIAgent::Codex => "Codex",
+            CLIAgent::Zai => "Z.ai",
             CLIAgent::Amp => "Amp",
             CLIAgent::Droid => "Droid",
             CLIAgent::OpenCode => "OpenCode",
@@ -200,6 +211,7 @@ impl CLIAgent {
             CLIAgent::Claude => Some(Icon::ClaudeLogo),
             CLIAgent::Gemini => Some(Icon::GeminiLogo),
             CLIAgent::Codex => Some(Icon::OpenAILogo),
+            CLIAgent::Zai => Some(Icon::ZaiLogo),
             CLIAgent::Amp => Some(Icon::AmpLogo),
             CLIAgent::Droid => Some(Icon::DroidLogo),
             CLIAgent::OpenCode => Some(Icon::OpenCodeLogo),
@@ -229,6 +241,7 @@ impl CLIAgent {
                 SkillProvider::Claude,
             ],
             CLIAgent::Gemini => &[SkillProvider::Agents, SkillProvider::Gemini],
+            CLIAgent::Zai => &[SkillProvider::Agents],
             CLIAgent::Amp => &[SkillProvider::Agents],
             CLIAgent::Copilot => &[SkillProvider::Agents, SkillProvider::Copilot],
             CLIAgent::Droid => &[SkillProvider::Droid, SkillProvider::Agents],
@@ -268,6 +281,7 @@ impl CLIAgent {
             CLIAgent::Claude => Some(CLAUDE_ORANGE),
             CLIAgent::Gemini => Some(GEMINI_BLUE),
             CLIAgent::Codex => Some(OPENAI_COLOR),
+            CLIAgent::Zai => Some(ZAI_COLOR),
             CLIAgent::Amp => Some(AMP_COLOR),
             CLIAgent::Droid => Some(DROID_COLOR),
             CLIAgent::OpenCode => Some(OPENCODE_COLOR),
@@ -529,6 +543,7 @@ impl From<CLIAgent> for CLIAgentType {
             CLIAgent::Claude => CLIAgentType::Claude,
             CLIAgent::Gemini => CLIAgentType::Gemini,
             CLIAgent::Codex => CLIAgentType::Codex,
+            CLIAgent::Zai => CLIAgentType::Zai,
             CLIAgent::Amp => CLIAgentType::Amp,
             CLIAgent::Droid => CLIAgentType::Droid,
             CLIAgent::OpenCode => CLIAgentType::OpenCode,

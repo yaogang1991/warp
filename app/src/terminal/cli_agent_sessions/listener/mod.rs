@@ -45,6 +45,7 @@ pub fn is_agent_supported(agent: &CLIAgent) -> bool {
             | CLIAgent::OpenCode
             | CLIAgent::Codex
             | CLIAgent::Gemini
+            | CLIAgent::Zai
             | CLIAgent::Auggie
             | CLIAgent::Pi
     )
@@ -53,14 +54,16 @@ pub fn is_agent_supported(agent: &CLIAgent) -> bool {
 /// Creates the appropriate handler for the given CLI agent.
 fn create_handler(agent: &CLIAgent) -> Option<Box<dyn CLIAgentSessionHandler>> {
     match agent {
-        // Auggie and Pi are supported via community-maintained plugins
+        // Auggie, Pi, and Zai are supported via community-maintained plugins
         // (https://github.com/augmentmoogi/auggie-warp,
-        // https://github.com/badlogic/pi-mono), which emit the same
+        // https://github.com/badlogic/pi-mono,
+        // https://github.com/warpdotdev/zai-warp), which emit the same
         // structured OSC 777 events as the first-party Claude/OpenCode/Gemini
         // plugins. We don't ship install flows for them — we just listen.
         CLIAgent::Claude
         | CLIAgent::OpenCode
         | CLIAgent::Gemini
+        | CLIAgent::Zai
         | CLIAgent::Auggie
         | CLIAgent::Pi => Some(Box::new(DefaultSessionListener)),
         CLIAgent::Codex => Some(Box::new(CodexSessionHandler)),
@@ -322,6 +325,46 @@ mod tests {
         let event = CLIAgentEvent {
             v: 1,
             agent: CLIAgent::Pi,
+            event: CLIAgentEventType::Stop,
+            session_id: None,
+            cwd: None,
+            project: None,
+            payload: CLIAgentEventPayload::default(),
+        };
+        assert!(handler.handle_event(event).is_some());
+    }
+
+    #[test]
+    fn zai_is_supported() {
+        assert!(is_agent_supported(&CLIAgent::Zai));
+    }
+
+    #[test]
+    fn zai_uses_default_handler_with_rich_status() {
+        assert!(agent_supports_rich_status(&CLIAgent::Zai));
+    }
+
+    #[test]
+    fn zai_default_handler_skips_session_start() {
+        let mut handler = DefaultSessionListener;
+        let event = CLIAgentEvent {
+            v: 1,
+            agent: CLIAgent::Zai,
+            event: CLIAgentEventType::SessionStart,
+            session_id: None,
+            cwd: None,
+            project: None,
+            payload: CLIAgentEventPayload::default(),
+        };
+        assert!(handler.handle_event(event).is_none());
+    }
+
+    #[test]
+    fn zai_default_handler_forwards_stop() {
+        let mut handler = DefaultSessionListener;
+        let event = CLIAgentEvent {
+            v: 1,
+            agent: CLIAgent::Zai,
             event: CLIAgentEventType::Stop,
             session_id: None,
             cwd: None,

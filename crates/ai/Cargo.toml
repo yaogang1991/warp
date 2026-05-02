@@ -59,6 +59,7 @@ warp_util.workspace = true
 chrono.workspace = true
 persistence.workspace = true
 priority-queue = "2.3.1"
+reqwest.workspace = true
 repo_metadata.workspace = true
 uuid.workspace = true
 unicode-width.workspace = true

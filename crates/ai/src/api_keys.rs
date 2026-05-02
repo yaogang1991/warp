@@ -18,6 +18,7 @@ pub enum ApiKeyManagerEvent {
 pub enum LocalAIProviderType {
     OpenAI,
     Anthropic,
+    Zai,
 }
 
 /// User-provided API keys for AI providers.
@@ -30,6 +31,8 @@ pub struct ApiKeys {
     pub anthropic: Option<String>,
     pub openai: Option<String>,
     pub open_router: Option<String>,
+    /// Z.ai (Zhipu AI / GLM) API key for GLM Coding Plan
+    pub zai: Option<String>,
     /// Custom base URL for local AI service (e.g., GLM Coding Plan)
     pub base_url: Option<String>,
     /// Provider type for custom base URL (openai or anthropic compatible)
@@ -42,6 +45,7 @@ impl ApiKeys {
             || self.anthropic.is_some()
             || self.google.is_some()
             || self.open_router.is_some()
+            || self.zai.is_some()
             || self.base_url.is_some()
     }
 
@@ -50,7 +54,13 @@ impl ApiKeys {
         self.base_url.is_some()
             && (self.openai.is_some()
                 || self.anthropic.is_some()
-                || self.open_router.is_some())
+                || self.open_router.is_some()
+                || self.zai.is_some())
+    }
+
+    /// Check if Z.ai is configured (API key present)
+    pub fn has_zai_config(&self) -> bool {
+        self.zai.is_some()
     }
 }
 
@@ -114,6 +124,12 @@ impl ApiKeyManager {
         self.write_keys_to_secure_storage(ctx);
     }
 
+    pub fn set_zai_key(&mut self, key: Option<String>, ctx: &mut ModelContext<Self>) {
+        self.keys.zai = key;
+        ctx.emit(ApiKeyManagerEvent::KeysUpdated);
+        self.write_keys_to_secure_storage(ctx);
+    }
+
     pub fn set_base_url(&mut self, base_url: Option<String>, ctx: &mut ModelContext<Self>) {
         self.keys.base_url = base_url;
         ctx.emit(ApiKeyManagerEvent::KeysUpdated);
@@ -140,6 +156,14 @@ impl ApiKeyManager {
 
     pub fn has_local_ai_config(&self) -> bool {
         self.keys.has_local_ai_config()
+    }
+
+    pub fn has_zai_config(&self) -> bool {
+        self.keys.has_zai_config()
+    }
+
+    pub fn zai_key(&self) -> Option<&String> {
+        self.keys.zai.as_ref()
     }
 
     pub fn set_aws_credentials_state(

@@ -36,6 +36,10 @@ pub struct CLIAgentEventPayload {
     pub tool_name: Option<String>,
     pub tool_input_preview: Option<String>,
     pub plugin_version: Option<String>,
+    /// Token usage information for GLM/Z.ai agents
+    pub daily_tokens_used: Option<u32>,
+    pub daily_tokens_limit: Option<u32>,
+    pub five_hour_tokens_remaining: Option<u32>,
 }
 
 /// A parsed event from a CLI agent plugin.

@@ -4,6 +4,14 @@ use crate::terminal::CLIAgent;
 
 use super::{CLIAgentEvent, CLIAgentEventPayload, CLIAgentEventType};
 
+/// Token usage information for GLM/Z.ai agents
+#[derive(Deserialize)]
+struct UsageInfo {
+    daily_tokens: Option<u32>,
+    daily_limit: Option<u32>,
+    five_hour_remaining: Option<u32>,
+}
+
 /// Resolves a CLI agent from the `"agent"` string in a CLI agent event.
 /// Returns `None` if the string doesn't match any known agent.
 fn resolve_agent(agent: &str) -> Option<CLIAgent> {
@@ -39,6 +47,15 @@ pub(super) fn parse(body: &str) -> Option<CLIAgentEvent> {
         .and_then(resolve_agent)
         .unwrap_or(CLIAgent::Unknown);
 
+    let (daily_tokens_used, daily_tokens_limit, five_hour_tokens_remaining) = match raw.usage {
+        Some(usage) => (
+            usage.daily_tokens,
+            usage.daily_limit,
+            usage.five_hour_remaining,
+        ),
+        None => (None, None, None),
+    };
+
     Some(CLIAgentEvent {
         v: raw.v.unwrap_or(1),
         agent,
@@ -54,6 +71,9 @@ pub(super) fn parse(body: &str) -> Option<CLIAgentEvent> {
             tool_name: raw.tool_name,
             tool_input_preview,
             plugin_version: raw.plugin_version,
+            daily_tokens_used,
+            daily_tokens_limit,
+            five_hour_tokens_remaining,
         },
     })
 }
@@ -73,4 +93,5 @@ struct RawEvent {
     tool_name: Option<String>,
     tool_input: Option<serde_json::Value>,
     plugin_version: Option<String>,
+    usage: Option<UsageInfo>,
 }
