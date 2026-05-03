@@ -9,7 +9,6 @@ use async_trait::async_trait;
 use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
 use reqwest::Client;
 use reqwest_eventsource::{Event, RequestBuilderExt};
-use serde::Deserialize;
 use std::pin::Pin;
 
 /// Anthropic-compatible client.
@@ -22,81 +21,6 @@ impl AnthropicClient {
         Self {
             http_client: Client::new(),
         }
-    }
-
-    async fn send_request_internal(
-        &self,
-        config: &LocalAIConfig,
-        messages: Vec<ChatMessage>,
-    ) -> Result<String, LocalAIError> {
-        let endpoint = config.chat_endpoint();
-        let model = config.default_model();
-
-        let request = AnthropicMessageRequest {
-            model: model.to_string(),
-            messages,
-            max_tokens: 4096,
-            stream: false,
-        };
-
-        let response = self
-            .http_client
-            .post(&endpoint)
-            .headers(self.build_headers(&config.api_key))
-            .timeout(config.timeout())
-            .json(&request)
-            .send()
-            .await
-            .map_err(LocalAIError::RequestFailed)?;
-
-        let status = response.status();
-        let body = response.bytes().await.map_err(LocalAIError::RequestFailed)?;
-
-        if !status.is_success() {
-            let error_msg = String::from_utf8_lossy(&body);
-            return Err(LocalAIError::ApiError(format!(
-                "Status {}: {}",
-                status, error_msg
-            )));
-        }
-
-        #[derive(Deserialize)]
-        struct MessageResponse {
-            content: Vec<ContentBlock>,
-        }
-
-        #[derive(Deserialize)]
-        struct ContentBlock {
-            r#type: String,
-            text: Option<String>,
-        }
-
-        let message_response: MessageResponse =
-            serde_json::from_slice(&body).map_err(|e| {
-                LocalAIError::InvalidResponse(format!("Failed to parse response: {}", e))
-            })?;
-
-        // Extract text from content blocks
-        let text_parts: Vec<String> = message_response
-            .content
-            .iter()
-            .filter_map(|block| {
-                if block.r#type == "text" {
-                    block.text.as_ref()
-                } else {
-                    None
-                }
-            })
-            .cloned()
-            .collect();
-
-        if text_parts.is_empty() {
-            return Err(LocalAIError::InvalidResponse(
-                "No text content in response".to_string(),
-            ));
-        }
-
-        Ok(text_parts.join(""))
     }
 
     /// Send a streaming request to Anthropic-compatible endpoint.
@@ -184,14 +108,6 @@ impl AnthropicClient {
 
 #[async_trait]
 impl ProviderClient for AnthropicClient {
-    async fn send_chat_request(
-        &self,
-        config: &LocalAIConfig,
-        messages: Vec<ChatMessage>,
-    ) -> Result<String, LocalAIError> {
-        self.send_request_internal(config, messages).await
-    }
-
     async fn send_chat_request_streaming(
         &self,
         config: &LocalAIConfig,
@@ -206,10 +122,11 @@ impl ProviderClient for AnthropicClient {
             CONTENT_TYPE,
             HeaderValue::from_static("application/json"),
         );
-        headers.insert(
-            "x-api-key",
-            HeaderValue::from_str(api_key).expect("Invalid API key"),
-        );
+        if let Ok(value) = HeaderValue::from_str(api_key) {
+            headers.insert("x-api-key", value);
+        } else {
+            log::warn!("Local AI: API key contains invalid header characters, request may fail");
+        }
         headers.insert(
             "anthropic-version",
             HeaderValue::from_static("2023-06-01"),

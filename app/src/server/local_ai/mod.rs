@@ -82,23 +82,22 @@ impl LocalAIConfig {
 
     /// Get the full endpoint URL for chat completions.
     pub fn chat_endpoint(&self) -> String {
+        let base = self.base_url.trim_end_matches('/');
         match self.provider_type {
             ProviderType::OpenAI => {
-                let base = self.base_url.trim_end_matches('/');
-                if base.ends_with("/v1") {
+                if base.ends_with("/chat/completions") {
+                    base.to_string()
+                } else if base.ends_with("/v1") {
                     format!("{}/chat/completions", base)
-                } else if base.ends_with("/v1/") {
-                    format!("{}chat/completions", base)
                 } else {
                     format!("{}/v1/chat/completions", base)
                 }
             }
             ProviderType::Anthropic => {
-                let base = self.base_url.trim_end_matches('/');
-                if base.ends_with("/v1") {
+                if base.ends_with("/messages") {
+                    base.to_string()
+                } else if base.ends_with("/v1") {
                     format!("{}/messages", base)
-                } else if base.ends_with("/v1/") {
-                    format!("{}messages", base)
                 } else {
                     format!("{}/v1/messages", base)
                 }
@@ -159,42 +158,6 @@ pub struct AnthropicMessageRequest {
     pub messages: Vec<ChatMessage>,
     pub max_tokens: u32,
     pub stream: bool,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct OpenAIChatResponse {
-    pub choices: Vec<OpenAIChoice>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct OpenAIChoice {
-    pub message: OpenAIMessage,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct OpenAIMessage {
-    pub content: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct AnthropicMessageResponse {
-    pub content: Vec<AnthropicContentBlock>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct AnthropicContentBlock {
-    pub r#type: String,
-    pub text: Option<String>,
-}
-
-impl AnthropicContentBlock {
-    fn get_text(&self) -> Option<&str> {
-        if self.r#type == "text" {
-            self.text.as_deref()
-        } else {
-            None
-        }
-    }
 }
 
 /// Streaming chunk types for different providers.
@@ -277,7 +240,7 @@ pub enum LocalAIError {
 
 impl From<LocalAIError> for AIApiError {
     fn from(err: LocalAIError) -> Self {
-        AIApiError::Other(anyhow!("{:?}", err))
+        AIApiError::Other(anyhow!("{err}"))
     }
 }
 
@@ -349,6 +312,16 @@ pub async fn send_chat_with_retry(
                     LocalAIError::ApiError(msg) => {
                         msg.contains("429") || msg.contains("rate limit") || msg.contains("timeout")
                     }
+                    LocalAIError::StreamError(msg) => {
+                        // Streaming connection errors (HTTP 429/500/502/503, timeouts)
+                        msg.contains("429")
+                            || msg.contains("500")
+                            || msg.contains("502")
+                            || msg.contains("503")
+                            || msg.contains("timeout")
+                            || msg.contains("rate limit")
+                    }
+                    LocalAIError::Timeout(_) => true,
                     _ => false,
                 };
 

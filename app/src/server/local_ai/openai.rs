@@ -8,7 +8,6 @@ use async_trait::async_trait;
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use reqwest::Client;
 use reqwest_eventsource::{Event, RequestBuilderExt};
-use serde::Deserialize;
 use std::pin::Pin;
 
 /// OpenAI-compatible client.
@@ -21,67 +20,6 @@ impl OpenAIClient {
         Self {
             http_client: Client::new(),
         }
-    }
-
-    async fn send_request_internal(
-        &self,
-        config: &LocalAIConfig,
-        messages: Vec<ChatMessage>,
-    ) -> Result<String, LocalAIError> {
-        let endpoint = config.chat_endpoint();
-        let model = config.default_model();
-
-        let request = OpenAIChatRequest {
-            model: model.to_string(),
-            messages,
-            stream: false,
-        };
-
-        let response = self
-            .http_client
-            .post(&endpoint)
-            .headers(self.build_headers(&config.api_key))
-            .timeout(config.timeout())
-            .json(&request)
-            .send()
-            .await
-            .map_err(LocalAIError::RequestFailed)?;
-
-        let status = response.status();
-        let body = response.bytes().await.map_err(LocalAIError::RequestFailed)?;
-
-        if !status.is_success() {
-            let error_msg = String::from_utf8_lossy(&body);
-            return Err(LocalAIError::ApiError(format!(
-                "Status {}: {}",
-                status, error_msg
-            )));
-        }
-
-        #[derive(Deserialize)]
-        struct ChatResponse {
-            choices: Vec<Choice>,
-        }
-
-        #[derive(Deserialize)]
-        struct Choice {
-            message: Message,
-        }
-
-        #[derive(Deserialize)]
-        struct Message {
-            content: String,
-        }
-
-        let chat_response: ChatResponse = serde_json::from_slice(&body).map_err(|e| {
-            LocalAIError::InvalidResponse(format!("Failed to parse response: {}", e))
-        })?;
-
-        chat_response
-            .choices
-            .first()
-            .map(|choice| choice.message.content.clone())
-            .ok_or_else(|| LocalAIError::InvalidResponse("No choices in response".to_string()))
     }
 
     /// Send a streaming request to OpenAI-compatible endpoint.
@@ -124,7 +62,7 @@ impl OpenAIClient {
                 Ok(Event::Message(message)) => {
                     if message.data == "[DONE]" {
                         // Stream finished
-                    future::ready(None)
+                        future::ready(None)
                     } else {
                         // Parse JSON chunk
                         match serde_json::from_str::<OpenAIStreamChunk>(&message.data) {
@@ -159,14 +97,6 @@ impl OpenAIClient {
 
 #[async_trait]
 impl ProviderClient for OpenAIClient {
-    async fn send_chat_request(
-        &self,
-        config: &LocalAIConfig,
-        messages: Vec<ChatMessage>,
-    ) -> Result<String, LocalAIError> {
-        self.send_request_internal(config, messages).await
-    }
-
     async fn send_chat_request_streaming(
         &self,
         config: &LocalAIConfig,
@@ -181,11 +111,11 @@ impl ProviderClient for OpenAIClient {
             CONTENT_TYPE,
             HeaderValue::from_static("application/json"),
         );
-        headers.insert(
-            AUTHORIZATION,
-            HeaderValue::from_str(&format!("Bearer {}", api_key))
-                .expect("Invalid auth header"),
-        );
+        if let Ok(value) = HeaderValue::from_str(&format!("Bearer {}", api_key)) {
+            headers.insert(AUTHORIZATION, value);
+        } else {
+            log::warn!("Local AI: API key contains invalid header characters, request may fail");
+        }
         headers
     }
 }

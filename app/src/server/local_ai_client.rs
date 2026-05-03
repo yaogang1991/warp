@@ -64,22 +64,27 @@ impl LocalAIClient {
         let api_keys = ApiKeyManager::as_ref(ctx).keys();
 
         let base_url = api_keys.base_url.as_ref()?;
-        let api_key = api_keys.openai.as_ref()
-            .or(api_keys.anthropic.as_ref())
-            .or(api_keys.open_router.as_ref())
-            .or(api_keys.zai.as_ref())?;
 
-        // All supported providers use the OpenAI-compatible protocol
-        let provider_type = ProviderType::OpenAI;
-
-        // Respect configured provider type if available
+        // Determine provider protocol from explicit setting, default to OpenAI-compatible
         let provider_type = api_keys.local_provider_type
             .map(|pt| match pt {
                 ai::api_keys::LocalAIProviderType::OpenAI => ProviderType::OpenAI,
                 ai::api_keys::LocalAIProviderType::Anthropic => ProviderType::Anthropic,
                 ai::api_keys::LocalAIProviderType::Zai => ProviderType::OpenAI,
             })
-            .unwrap_or(provider_type);
+            .unwrap_or(ProviderType::OpenAI);
+
+        // Pick API key: prefer key matching the configured provider, then fall back to any available key
+        let api_key = match api_keys.local_provider_type {
+            Some(ai::api_keys::LocalAIProviderType::Zai) => api_keys.zai.as_ref()
+                .or(api_keys.openai.as_ref()),
+            Some(ai::api_keys::LocalAIProviderType::Anthropic) => api_keys.anthropic.as_ref()
+                .or(api_keys.openai.as_ref()),
+            Some(ai::api_keys::LocalAIProviderType::OpenAI) | None => api_keys.openai.as_ref()
+                .or(api_keys.open_router.as_ref())
+                .or(api_keys.zai.as_ref())
+                .or(api_keys.anthropic.as_ref()),
+        }?;
 
         let config = LocalAIConfig {
             base_url: base_url.clone(),
